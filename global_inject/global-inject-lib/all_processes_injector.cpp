@@ -24,24 +24,9 @@ AllProcessesInjector::AllProcessesInjector()
 	NtGetNextThread = (NtGetNextThread_t)GetProcAddress(hNtdll, "NtGetNextThread");
 	THROW_LAST_ERROR_IF_NULL(NtGetNextThread);
 
-#ifdef _WIN64
-	pRtlUserThreadStart = (DWORD64)GetProcAddress(hNtdll, "RtlUserThreadStart");
-#else // !_WIN64
-	SYSTEM_INFO siSystemInfo;
-	GetNativeSystemInfo(&siSystemInfo);
-	if (siSystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
-		// 32-bit machine.
-		pRtlUserThreadStart = PTR_TO_DWORD64(GetProcAddress(hNtdll, "RtlUserThreadStart"));
-	}
-	else {
-		DWORD64 hNtdll64 = GetModuleHandle64(L"ntdll.dll");
-		if (hNtdll64 == 0) {
-			THROW_WIN32(ERROR_MOD_NOT_FOUND);
-		}
 
-		pRtlUserThreadStart = GetProcAddress64(hNtdll64, "RtlUserThreadStart");
-	}
-#endif // _WIN64
+	pRtlUserThreadStart = (DWORD64)GetProcAddress(hNtdll, "RtlUserThreadStart");
+
 	THROW_LAST_ERROR_IF(pRtlUserThreadStart == 0);
 
 	appPrivateNamespace = SessionPrivateNamespace::Create(GetCurrentProcessId());
@@ -75,6 +60,28 @@ int AllProcessesInjector::InjectIntoNewProcesses() noexcept
 		if (dwNewProcessId == 0) {
 			LOG(L"GetProcessId error: %u", GetLastError());
 			continue;
+		}
+
+		// 获取进程名称
+		WCHAR processName[MAX_PATH] = { 0 };
+		DWORD processNameLen = ARRAYSIZE(processName);
+		if (!QueryFullProcessImageName(hNewProcess, 0, processName, &processNameLen)) {
+			LOG(L"QueryFullProcessImageName failed for process %u: %u", dwNewProcessId, GetLastError());
+			continue;
+		}
+
+		// 检查是否为 explorer.exe
+		const WCHAR* targetName = L"explorer.exe";
+		const WCHAR* processFileName = wcsrchr(processName, L'\\');
+		if (!processFileName) {
+			processFileName = processName; // 只有文件名
+		}
+		else {
+			processFileName++; // 跳过 '\'
+		}
+
+		if (_wcsicmp(processFileName, targetName) != 0) {
+			continue; // 不是 explorer.exe，跳过
 		}
 
 		try {
@@ -138,38 +145,18 @@ void AllProcessesInjector::InjectIntoNewProcess(HANDLE hProcess, DWORD dwProcess
 	if (suspendedThread) {
 		auto suspendThreadCleanup = wil::scope_exit([&suspendedThread] {
 			ResumeThread(suspendedThread.get());
-		});
+			});
 
 		bool threadNotStartedYet = false;
 
-#ifdef _WIN64
+
 		CONTEXT c;
 		c.ContextFlags = CONTEXT_CONTROL;
 		THROW_IF_WIN32_BOOL_FALSE(GetThreadContext(suspendedThread.get(), &c));
 		if (c.Rip == pRtlUserThreadStart) {
 			threadNotStartedYet = true;
 		}
-#else // !_WIN64
-		SYSTEM_INFO siSystemInfo;
-		GetNativeSystemInfo(&siSystemInfo);
-		if (siSystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
-			// 32-bit machine.
-			CONTEXT c;
-			c.ContextFlags = CONTEXT_CONTROL;
-			THROW_IF_WIN32_BOOL_FALSE(GetThreadContext(suspendedThread.get(), &c));
-			if (c.Eip == pRtlUserThreadStart) {
-				threadNotStartedYet = true;
-			}
-		}
-		else {
-			_CONTEXT64 c;
-			c.ContextFlags = CONTEXT64_CONTROL;
-			THROW_IF_WIN32_BOOL_FALSE(GetThreadContext64(suspendedThread.get(), &c));
-			if (c.Rip == pRtlUserThreadStart) {
-				threadNotStartedYet = true;
-			}
-		}
-#endif // _WIN64
+
 
 		if (threadNotStartedYet) {
 			wil::unique_mutex_nothrow mutex(CreateProcessInitAPCMutex(dwProcessId, TRUE));

@@ -91,7 +91,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)$(Configuration)\64\</OutDir>
+    <OutDir>C:\Users\Administrator\Desktop\exe\StartX\bin\64</OutDir>
     <IncludePath>$(ProjectDir)libraries;$(ProjectDir)..\shared\libraries;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)libraries;$(ProjectDir)..\shared\libraries;$(LibraryPath)</LibraryPath>
     <GenerateManifest>false</GenerateManifest>
@@ -174,7 +174,7 @@
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>MinHook/libMinHook.x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>MinHook/libMinHook.d.x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>_exports.def</ModuleDefinitionFile>
     </Link>
   </ItemDefinitionGroup>
